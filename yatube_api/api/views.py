@@ -90,10 +90,12 @@ class FollowViewSet(viewsets.ModelViewSet):
                     serializer.data, status=status.HTTP_201_CREATED)
             except IntegrityError:
                 return Response(
-                    {"Error": "Вы уже подписаны на данного пользователя."},
+                    {"Error": "You are already subscribed to this user."},
                     status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"Error": "You aren't allowed to subscribe to yourself."},
+            status=status.HTTP_400_BAD_REQUEST)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
