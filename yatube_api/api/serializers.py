@@ -1,17 +1,33 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from rest_framework.relations import SlugRelatedField
+from rest_framework.validators import UniqueTogetherValidator
 
 from posts.models import Comment, Follow, Group, Post, User
 
 
 class FollowSerializer(serializers.ModelSerializer):
-    user = SlugRelatedField(slug_field='username', read_only=True)
+    user = SlugRelatedField(slug_field='username', read_only=True,
+                            default=serializers.CurrentUserDefault())
     following = SlugRelatedField(slug_field='username', required=True,
                                  queryset=User.objects.all())
 
     class Meta:
         model = Follow
         fields = '__all__'
+    validators = [
+        UniqueTogetherValidator(
+            queryset=Follow.objects.all(),
+            fields=('user', 'following'),
+            message="Subscription_must_be_unique"
+        )
+    ]
+
+    def validate(self, data):
+        if (self.context['request'].user == data['following']
+           and self.context['request'].method == 'POST'):
+            raise ValidationError("User_and_following_can_not_be_equal")
+        return data
 
 
 class UserSerializer(serializers.ModelSerializer):
