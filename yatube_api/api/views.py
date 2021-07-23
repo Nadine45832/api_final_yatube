@@ -1,13 +1,14 @@
 from django.db import IntegrityError
 from django_filters.rest_framework import DjangoFilterBackend
-from posts.models import Follow, Group, Post, User
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.generics import get_object_or_404
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .permissions import OwnerOrReadOnly, ReadOnly
+from posts.models import Follow, Group, Post, User
+
+from .permissions import OwnerOrReadOnly
 from .serializers import (CommentSerializer, FollowSerializer, GroupSerializer,
                           PostSerializer, UserSerializer)
 
@@ -25,16 +26,6 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
-
-    def get_permissions(self):
-        if self.action == 'retrieve':
-            return (ReadOnly(),)
-        return super().get_permissions()
-
-    def retrieve(self, request, pk=None):
-        group = get_object_or_404(Post, id=pk)
-        serializer = PostSerializer(group)
-        return Response(serializer.data)
 
 
 class GroupViewSet(viewsets.ReadOnlyModelViewSet):
@@ -62,13 +53,14 @@ class CommentViewSet(viewsets.ModelViewSet):
         serializer.save(
             author=self.request.user, post=post)
 
-    def get_permissions(self):
-        if self.action == 'retrieve':
-            return (ReadOnly(),)
-        return super().get_permissions()
+
+class ListRetriveCreateViewSet(
+        mixins.ListModelMixin, mixins.RetrieveModelMixin,
+        mixins.CreateModelMixin, viewsets.GenericViewSet):
+    pass
 
 
-class FollowViewSet(viewsets.ModelViewSet):
+class FollowViewSet(ListRetriveCreateViewSet):
     queryset = Follow.objects.all()
     serializer_class = FollowSerializer
     permission_classes = (IsAuthenticated,)
@@ -82,20 +74,14 @@ class FollowViewSet(viewsets.ModelViewSet):
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        following = serializer.validated_data['following']
-        if following != self.request.user:
-            try:
-                self.perform_create(serializer)
-                return Response(
-                    serializer.data, status=status.HTTP_201_CREATED)
-            except IntegrityError:
-                return Response(
-                    {"Error": "You are already subscribed to this user."},
-                    status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(
-            {"Error": "You aren't allowed to subscribe to yourself."},
-            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            self.perform_create(serializer)
+            return Response(
+                serializer.data, status=status.HTTP_201_CREATED)
+        except IntegrityError as e:
+            return Response(
+                {"Error": f"{e}"},
+                status=status.HTTP_400_BAD_REQUEST)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
